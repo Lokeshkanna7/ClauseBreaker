@@ -71,4 +71,6 @@ Project Structure
 ├── requirements.txt    
 ├── README.md              
 └── data/
-          
+
+
+https://github.com/Lokeshkanna7/ClauseBreaker/blob/main/acrhitect_diagram.png
