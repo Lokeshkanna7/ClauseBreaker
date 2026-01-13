@@ -71,6 +71,6 @@ Project Structure
 ├── requirements.txt    
 ├── README.md              
 └── data/
-
+```
 
 ![Architecture Diagram](./acrhitect_diagram.png)
