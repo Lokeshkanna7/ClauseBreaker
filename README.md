@@ -73,4 +73,4 @@ Project Structure
 └── data/
 
 
-https://github.com/Lokeshkanna7/ClauseBreaker/blob/main/acrhitect_diagram.png
+![Architecture Diagram](https://github.com/Lokeshkanna7/ClauseBreaker/blob/main/acrhitect_diagram.png?raw=true)
