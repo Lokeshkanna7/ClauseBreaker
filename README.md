@@ -71,8 +71,4 @@ Project Structure
 ├── requirements.txt    
 ├── README.md              
 └── data/
-
-
-
-<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/dc256bdf-cf58-49cd-bfb3-3c1294ab053e" />
           
