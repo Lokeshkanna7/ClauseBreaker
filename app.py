@@ -4,18 +4,16 @@ import os
 import time
 from dotenv import load_dotenv
 
-# 1. Load Environment Variables
+
 load_dotenv(override=True)
 
-# 2. Modern Imports (Fixes ModuleNotFoundErrors)
+
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
-# -------------------------------
-# Streamlit Configuration
-# -------------------------------
+
 st.set_page_config(
     page_title="Student Lease Break Advisor",
     layout="wide"
@@ -24,17 +22,30 @@ st.set_page_config(
 st.title("Student Lease Break Advisor")
 st.caption("Legal information assistant for students (not legal advice)")
 
-# -------------------------------
-# Validation
-# -------------------------------
-api_key = os.getenv("GOOGLE_API_KEY")
+
+def get_api_key():
+    # 1. Try Streamlit Secrets (Cloud Deployment)
+    try:
+        if "GOOGLE_API_KEY" in st.secrets:
+            return st.secrets["GOOGLE_API_KEY"]
+    except FileNotFoundError:
+        pass 
+
+
+    env_key = os.getenv("GOOGLE_API_KEY")
+    if env_key:
+        return env_key
+    
+    return None
+
+
+api_key = get_api_key()
+
 if not api_key:
-    st.error("CRITICAL ERROR: Google API Key not found. Please create a .env file with GOOGLE_API_KEY=your_key")
+    st.error("🚨 API Key missing! On Streamlit Cloud, add it to 'Secrets'. Locally, use .env")
     st.stop()
 
-# -------------------------------
-# Helper Functions
-# -------------------------------
+
 
 def get_splitter():
     return RecursiveCharacterTextSplitter(
@@ -48,20 +59,18 @@ def create_vectorstore_with_batching(chunks, embeddings):
     Embeds documents in small batches with pauses to respect Google's
     free tier rate limits (avoiding 429 errors).
     """
-    batch_size = 5  # Process only 5 chunks at a time to stay safe
+    batch_size = 5  
     vectorstore = None
     
-    # Progress bar for user feedback
     progress_text = "Embedding document chunks... Please wait."
     my_bar = st.progress(0, text=progress_text)
     
     total_chunks = len(chunks)
     
     for i in range(0, total_chunks, batch_size):
-        # 1. Get the next batch
+        
         batch = chunks[i : i + batch_size]
         
-        # 2. Add to Vector Store
         try:
             if vectorstore is None:
                 vectorstore = FAISS.from_documents(batch, embeddings)
@@ -71,14 +80,14 @@ def create_vectorstore_with_batching(chunks, embeddings):
             st.error(f"Error on batch {i}: {e}")
             return None
 
-        # 3. Update Progress Bar
+        
         percent_complete = min((i + batch_size) / total_chunks, 1.0)
         my_bar.progress(percent_complete, text=f"Processing chunk {min(i + batch_size, total_chunks)} of {total_chunks}")
         
-        # 4. CRITICAL: Sleep for 2 seconds to reset the API quota counter
+        
         time.sleep(2)
         
-    # Remove progress bar when done
+    
     my_bar.empty()
     return vectorstore
 
@@ -90,13 +99,13 @@ def process_uploaded_file(file_content, file_name):
     """
     ext = os.path.splitext(file_name)[1].lower()
     
-    # Create a temp file with the specific extension (Required for Windows/LangChain)
+  
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
         tmp.write(file_content)
         tmp_path = tmp.name
 
     try:
-        # Select the correct loader
+       
         if ext == ".pdf":
             loader = PyPDFLoader(tmp_path)
         elif ext == ".docx":
@@ -104,22 +113,22 @@ def process_uploaded_file(file_content, file_name):
         else:
             return None
 
-        # Load and Split
+      
         docs = loader.load()
         splitter = get_splitter()
         chunks = splitter.split_documents(docs)
 
-        # Tag source
+      
         for d in chunks:
             d.metadata["source"] = "lease"
             
-        # Embed using Explicit API Key and Newer Model
+        
         embeddings = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004", # Newer model, often more stable
             google_api_key=api_key
         )
         
-        # Use the batching function to prevent crashes
+       
         return create_vectorstore_with_batching(chunks, embeddings)
 
     except Exception as e:
@@ -127,7 +136,7 @@ def process_uploaded_file(file_content, file_name):
         return None
 
     finally:
-        # Cleanup temp file manually to avoid file locks
+       
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
@@ -151,7 +160,7 @@ def get_law_vectorstore(state):
         """
     }
 
-    # Create temp text file
+ 
     content = laws.get(state, "State law information unavailable.")
     with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".txt", encoding='utf-8') as f:
         f.write(content)
@@ -167,13 +176,13 @@ def get_law_vectorstore(state):
             d.metadata["source"] = "law"
             d.metadata["state"] = state
 
-        # Embed using Explicit API Key
+       
         embeddings = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004",
             google_api_key=api_key
         )
         
-        # Use batching here too
+       
         return create_vectorstore_with_batching(chunks, embeddings)
     
     finally:
@@ -184,19 +193,19 @@ def get_law_vectorstore(state):
                 pass
 
 def generate_answer(question, lease_db, law_db):
-    # Retrieve relevant chunks from both DBs
+    
     lease_docs = lease_db.similarity_search(question, k=4)
     law_docs = law_db.similarity_search(question, k=2)
 
-    # Combine context
+    
     context_text = "\n\n".join(
         [f"[{d.metadata['source'].upper()}] {d.page_content}" 
          for d in lease_docs + law_docs]
     )
 
-    # Initialize LLM with Explicit API Key
+   
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", # Stable model for reasoning
+        model="gemini-2.5-flash", 
         temperature=0,
         google_api_key=api_key
     )
@@ -221,9 +230,7 @@ def generate_answer(question, lease_db, law_db):
     
     return llm.invoke(prompt).content
 
-# -------------------------------
-# Sidebar UI
-# -------------------------------
+
 state = st.sidebar.selectbox("Select U.S. State", ["New York", "California"])
 
 uploaded_file = st.sidebar.file_uploader(
@@ -234,28 +241,24 @@ uploaded_file = st.sidebar.file_uploader(
 st.sidebar.markdown("---")
 st.sidebar.info("**Disclaimer:** This tool extracts text from your lease and compares it to general state laws. It is not a substitute for a lawyer.")
 
-# -------------------------------
-# Main Application Logic
-# -------------------------------
 
 if uploaded_file:
-    # Process Files (Cached)
-    # Note: We don't use st.spinner here because the custom batching function has its own progress bar
+    
     lease_db = process_uploaded_file(uploaded_file.getvalue(), uploaded_file.name)
     law_db = get_law_vectorstore(state)
     
     if lease_db:
         st.success("Analysis Complete. You may ask questions below.")
         
-        # Chat Interface
+       
         question = st.chat_input("Example: Can I break my lease if I found a new job?")
         
         if question:
-            # Display User Message
+           
             with st.chat_message("user"):
                 st.write(question)
             
-            # Generate and Display Assistant Response
+            
             with st.chat_message("assistant"):
                 with st.spinner("Consulting lease terms and state laws..."):
                     try:
@@ -267,4 +270,5 @@ if uploaded_file:
         st.error("Failed to process document. Please try a different PDF.")
 
 else:
+
     st.info("👋 Welcome! Please upload your lease agreement on the left sidebar to begin.")
